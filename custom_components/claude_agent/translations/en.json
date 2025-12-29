@@ -1,0 +1,15 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Claude Agent",
+        "description": "Connect to Claude to generate automations.",
+        "data": {
+          "api_key": "API key",
+          "model": "Model",
+          "base_url": "Base URL"
+        }
+      }
+    }
+  }
+}

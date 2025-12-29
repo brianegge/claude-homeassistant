@@ -6,8 +6,15 @@ This repository manages Home Assistant configuration files with automated valida
 
 **Always consult the latest Home Assistant documentation** at https://www.home-assistant.io/docs/ before suggesting configurations, automations, or integrations. HA updates frequently and syntax/features change between versions.
 
-## Project Structure
+## Scope
+- **Terminal CLI workflow (local repo)**: Use these commands and tools to manage Home Assistant config files locally.
+- **Home Assistant integration runbook (`claude_agent`)**: Use these steps to deploy and validate the custom HA integration over SSH.
 
+Keep the workflows separate: the CLI tools operate on the local repo, while the integration runbook operates on the running HA instance.
+
+## Terminal CLI Workflow (Local Config Management)
+
+### Project Structure
 - `config/` - Contains all Home Assistant configuration files (synced from HA instance)
 - `tools/` - Validation and testing scripts
 - `venv/` - Python virtual environment with dependencies
@@ -71,19 +78,19 @@ needed, make them manually in the Home Assistant UI:
 
 ## Available Commands
 
-### Configuration Management
+#### Configuration Management
 - `make pull` - Pull latest config from Home Assistant instance
 - `make push` - Push local config to Home Assistant (with validation)
 - `make backup` - Create backup of current config
 - `make validate` - Run all validation tests
 
-### Validation Tools
+#### Validation Tools
 - `python tools/run_tests.py` - Run complete validation suite
 - `python tools/yaml_validator.py` - YAML syntax validation only
 - `python tools/reference_validator.py` - Entity/device reference validation
 - `python tools/ha_official_validator.py` - Official HA configuration validation
 
-### Entity Discovery Tools
+#### Entity Discovery Tools
 - `make entities` - Explore available Home Assistant entities
 - `python tools/entity_explorer.py` - Entity registry parser and explorer
   - `--search TERM` - Search entities by name, ID, or device class
@@ -91,7 +98,7 @@ needed, make them manually in the Home Assistant UI:
   - `--area AREA` - Show entities from specific area
   - `--full` - Show complete detailed output
 
-## Validation System
+### Validation System
 
 This project includes comprehensive validation to prevent invalid configurations:
 
@@ -99,13 +106,13 @@ This project includes comprehensive validation to prevent invalid configurations
 2. **Entity Reference Validation** - Checks that all referenced entities/devices exist
 3. **Official HA Validation** - Uses Home Assistant's own validation tools
 
-### Automated Validation Hooks
+#### Automated Validation Hooks
 
 - **Post-Edit Hook**: Runs validation after editing any YAML files in `config/`
 - **Pre-Push Hook**: Validates configuration before pushing to Home Assistant
 - **Blocks invalid pushes**: Prevents uploading broken configurations
 
-## Home Assistant Instance Details
+### Home Assistant Instance Details
 
 - **Host**: Configure in Makefile `HA_HOST` variable
 - **User**: Configure SSH access as needed
@@ -113,7 +120,7 @@ This project includes comprehensive validation to prevent invalid configurations
 - **Config Path**: /config/ (standard HA path)
 - **Version**: Compatible with Home Assistant Core 2024.x+
 
-## Entity Registry
+### Entity Registry
 
 The system tracks entities across these domains:
 - alarm_control_panel, binary_sensor, button, camera, climate
@@ -121,7 +128,7 @@ The system tracks entities across these domains:
 - number, person, scene, select, sensor, siren, switch
 - time, tts, update, vacuum, water_heater, weather, zone
 
-## Development Workflow
+### Development Workflow
 
 1. **Pull Latest**: `make pull` to sync from HA
 2. **Edit Locally**: Modify files in `config/` directory
@@ -129,7 +136,7 @@ The system tracks entities across these domains:
 4. **Test Changes**: `make validate` for full test suite
 5. **Deploy**: `make push` to upload (blocked if validation fails)
 
-## Key Features
+### Key Features
 
 - ✅ **Safe Deployments**: Pre-push validation prevents broken configs
 - ✅ **Entity Validation**: Ensures all references point to real entities
@@ -139,7 +146,7 @@ The system tracks entities across these domains:
 - ✅ **Comprehensive Testing**: Multiple validation layers
 - ✅ **Automated Hooks**: Validation runs automatically on file changes
 
-## Important Notes
+### Important Notes
 
 - **Never push without validation**: The hooks prevent this, but be aware
 - **Blueprint files** use `!input` tags which are normal and expected
@@ -148,24 +155,24 @@ The system tracks entities across these domains:
 - **Python venv required** for validation tools
 - All python tools need to be run with `source venv/bin/activate && python <tool_path>`
 
-## Troubleshooting
+### Troubleshooting
 
-### Validation Fails
+#### Validation Fails
 1. Check YAML syntax errors first
 2. Verify entity references exist in `.storage/` files
 3. Run individual validators to isolate issues
 4. Check HA logs if official validation fails
 
-### SSH Issues
+#### SSH Issues
 1. Verify SSH key permissions: `chmod 600 ~/.ssh/your_key`
 2. Test connection: `ssh your_homeassistant_host`
 3. Check SSH config in `~/.ssh/config`
 
-### Missing Dependencies
+#### Missing Dependencies
 1. Activate venv: `source venv/bin/activate`
 2. Install requirements: `pip install homeassistant voluptuous pyyaml`
 
-## Security
+### Security
 
 - **SSH keys** are used for secure access
 - **Secrets.yaml** is excluded from validation (contains sensitive data)
@@ -173,6 +180,59 @@ The system tracks entities across these domains:
 - **Access tokens** in config are for authorized integrations
 
 This system ensures you can confidently manage Home Assistant configurations with Claude while maintaining safety and reliability.
+
+## Home Assistant Integration Runbook (claude_agent)
+
+This section is for deploying and validating the custom `claude_agent` integration on a running Home Assistant instance. It is independent of the local config-management CLI workflow above.
+
+### Environment Assumptions
+- HA host SSH alias: `homeassistant_sf`
+- HA config path on host: `/config`
+- Local integration source: `custom_components/claude_agent`
+- HA URL: `http://homeassistant.local:8123`
+
+### Deployment
+1) Ensure SSH access works:
+```bash
+ssh -o ConnectTimeout=10 homeassistant_sf "ls /config"
+```
+2) Sync integration to HA:
+```bash
+rsync -av --delete custom_components/claude_agent/ homeassistant_sf:/config/custom_components/claude_agent/
+```
+3) Restart HA Core (may take time; job locks can appear):
+```bash
+ssh homeassistant_sf "ha core restart"
+```
+If the command times out, check status:
+```bash
+ssh homeassistant_sf "ha core info"
+```
+
+### Verification
+1) Check HA logs for integration errors:
+```bash
+ssh homeassistant_sf "ha core logs -n 300 | grep -i -A 4 -B 4 claude_agent"
+```
+2) Confirm integration folder is on host:
+```bash
+ssh homeassistant_sf "ls /config/custom_components/claude_agent"
+```
+
+### Known Gotchas
+- `hass.http.register_static_path` no longer exists. Use `await hass.http.async_register_static_paths([StaticPathConfig(...)])`.
+- HA core restarts can report "Another job is running"; re-run later.
+
+### UI Smoke Test
+- Settings → Devices & Services → Add Integration → "Claude Agent"
+- Add API key/model/base URL
+- Ensure sidebar panel "Claude Agent" appears
+- Load/Save `automations.yaml` from panel
+
+### Debugging Checklist
+- If setup fails, find the traceback in `ha core logs -n 300`.
+- Verify `strings.json` exists for config flow text.
+- Ensure `manifest.json` has `config_flow: true` and correct `domain`.
 
 ## Entity Naming Convention
 

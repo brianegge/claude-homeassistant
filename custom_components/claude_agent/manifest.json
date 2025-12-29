@@ -1,0 +1,11 @@
+{
+  "domain": "claude_agent",
+  "name": "Claude Agent",
+  "codeowners": ["@philippb"],
+  "config_flow": true,
+  "documentation": "https://github.com/philippb/claude-homeassistant",
+  "requirements": [],
+  "version": "0.1.0",
+  "iot_class": "cloud_polling",
+  "dependencies": ["panel_custom"]
+}
