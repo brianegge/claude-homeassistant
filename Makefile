@@ -13,6 +13,13 @@ LOCAL_CONFIG_PATH ?= config/
 BACKUP_DIR ?= backups
 VENV_PATH ?= venv
 TOOLS_PATH ?= tools
+HA_LOCAL_VENV ?= ha_venv
+HA_LOCAL_CONFIG_PATH ?= config-local
+HA_LOCAL_LOG_PATH ?= temp/ha-local.log
+HA_LOCAL_PYTHON ?= python3.13
+HA_LOCAL_HA_VERSION ?= 2025.12.5
+HA_LOCAL_CONSTRAINTS_URL ?= https://raw.githubusercontent.com/home-assistant/core/$(HA_LOCAL_HA_VERSION)/homeassistant/package_constraints.txt
+HA_LOCAL_EXTRA_PIP ?=
 
 # Colors for output
 GREEN = \033[0;32m
@@ -21,6 +28,7 @@ RED = \033[0;31m
 NC = \033[0m # No Color
 
 .PHONY: help pull push validate backup clean setup test status entities reload format-yaml check-env
+.PHONY: ha-local-setup ha-local-init ha-local-run ha-local-check ha-local-logs
 
 # Default target
 help:
@@ -32,6 +40,10 @@ help:
 	@echo "  $(YELLOW)validate$(NC) - Run all validation tests"
 	@echo "  $(YELLOW)backup$(NC)   - Create timestamped backup of current config"
 	@echo "  $(YELLOW)setup$(NC)    - Set up Python environment and dependencies"
+	@echo "  $(YELLOW)ha-local-setup$(NC) - Create local HA Core venv + config for dev testing"
+	@echo "  $(YELLOW)ha-local-run$(NC)   - Run local HA Core (foreground)"
+	@echo "  $(YELLOW)ha-local-check$(NC) - Validate local config with HA Core"
+	@echo "  $(YELLOW)ha-local-logs$(NC)  - Tail local HA Core log file"
 	@echo "  $(YELLOW)test$(NC)     - Run validation tests (alias for validate)"
 	@echo "  $(YELLOW)status$(NC)   - Show configuration status and entity counts"
 	@echo "  $(YELLOW)entities$(NC) - Explore available entities (usage: make entities [ARGS='options'])"
@@ -83,6 +95,38 @@ setup:
 	@. $(VENV_PATH)/bin/activate && pip install --upgrade pip
 	@. $(VENV_PATH)/bin/activate && pip install homeassistant voluptuous pyyaml jsonschema requests
 	@echo "$(GREEN)Setup complete!$(NC)"
+
+# Local HA Core setup (venv + config)
+ha-local-setup:
+	@echo "$(GREEN)Setting up local Home Assistant Core...$(NC)"
+	@$(HA_LOCAL_PYTHON) -m venv $(HA_LOCAL_VENV)
+	@. $(HA_LOCAL_VENV)/bin/activate && pip install --upgrade pip
+	@. $(HA_LOCAL_VENV)/bin/activate && pip install "homeassistant==$(HA_LOCAL_HA_VERSION)" -c $(HA_LOCAL_CONSTRAINTS_URL)
+	@. $(HA_LOCAL_VENV)/bin/activate && if [ -n "$(HA_LOCAL_EXTRA_PIP)" ]; then printf '%s\n' "$(HA_LOCAL_EXTRA_PIP)" | xargs pip install; fi
+	@. $(HA_LOCAL_VENV)/bin/activate && python $(TOOLS_PATH)/ha_local_init.py --config-path $(HA_LOCAL_CONFIG_PATH)
+	@echo "$(GREEN)Local HA Core setup complete!$(NC)"
+
+ha-local-init:
+	@python3 $(TOOLS_PATH)/ha_local_init.py --config-path $(HA_LOCAL_CONFIG_PATH)
+
+ha-local-run:
+	@echo "$(GREEN)Starting local Home Assistant Core...$(NC)"
+	@mkdir -p $$(dirname $(HA_LOCAL_LOG_PATH))
+	@. $(HA_LOCAL_VENV)/bin/activate && \
+		hass -c $(HA_LOCAL_CONFIG_PATH) \
+		--log-file $(HA_LOCAL_LOG_PATH)
+
+ha-local-check:
+	@echo "$(GREEN)Validating local HA configuration...$(NC)"
+	@. $(HA_LOCAL_VENV)/bin/activate && hass --script check_config -c $(HA_LOCAL_CONFIG_PATH)
+
+ha-local-logs:
+	@echo "$(GREEN)Tailing local HA logs...$(NC)"
+	@if [ ! -f "$(HA_LOCAL_LOG_PATH)" ]; then \
+		echo "$(YELLOW)Log file not found: $(HA_LOCAL_LOG_PATH)$(NC)"; \
+		exit 1; \
+	fi
+	@tail -n 200 -f $(HA_LOCAL_LOG_PATH)
 
 # Show configuration status
 status: check-setup

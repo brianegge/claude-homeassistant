@@ -92,6 +92,9 @@ config/.cloud/
 
 # Custom components (managed by HACS)
 config/custom_components/
+config-local/
+ha_venv/
+ha_venv_*/
 
 # Personal configuration that shouldn't be shared
 config/known_devices.yaml
