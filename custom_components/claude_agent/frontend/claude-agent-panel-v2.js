@@ -28,6 +28,17 @@ class ClaudeAgentPanel extends HTMLElement {
           margin-top: 8px;
           color: var(--secondary-text-color);
         }
+        .prompt {
+          margin-top: 12px;
+        }
+        .prompt textarea {
+          width: 100%;
+          min-height: 80px;
+          font-family: var(--code-font-family, monospace);
+          font-size: 12px;
+          padding: 8px;
+          box-sizing: border-box;
+        }
         textarea {
           width: 100%;
           min-height: 280px;
@@ -46,7 +57,15 @@ class ClaudeAgentPanel extends HTMLElement {
           <div class="row">
             <mwc-button raised id="load">Load automations.yaml</mwc-button>
             <mwc-button outlined id="save">Save automations.yaml</mwc-button>
+            <mwc-button raised id="generate">Generate</mwc-button>
             <span class="path" id="path"></span>
+          </div>
+          <div class="prompt">
+            <label for="prompt">Prompt</label>
+            <textarea
+              id="prompt"
+              placeholder="Describe the automation changes you want."
+            ></textarea>
           </div>
           <div class="status" id="status">Ready.</div>
           <textarea id="content" placeholder="Automations YAML will appear here"></textarea>
@@ -57,12 +76,16 @@ class ClaudeAgentPanel extends HTMLElement {
     this._statusEl = this.querySelector("#status");
     this._pathEl = this.querySelector("#path");
     this._contentEl = this.querySelector("#content");
+    this._promptEl = this.querySelector("#prompt");
 
     this.querySelector("#load").addEventListener("click", () => {
       this._loadAutomations();
     });
     this.querySelector("#save").addEventListener("click", () => {
       this._saveAutomations();
+    });
+    this.querySelector("#generate").addEventListener("click", () => {
+      this._generateFromPrompt();
     });
   }
 
@@ -110,6 +133,29 @@ class ClaudeAgentPanel extends HTMLElement {
     }
   }
 
+  async _generateFromPrompt() {
+    const prompt = (this._promptEl?.value || "").trim();
+    if (!prompt) {
+      this._setStatus("Please enter a prompt before generating.");
+      return;
+    }
+
+    this._setStatus("Generating updates...");
+    try {
+      const result = await this._hass.connection.sendMessagePromise({
+        type: "claude_agent/chat",
+        prompt,
+      });
+      this._contentEl.value = result.updated_yaml || "";
+      if (result.path) {
+        this._pathEl.textContent = result.path;
+      }
+      this._setStatus("Generated.");
+    } catch (err) {
+      this._setStatus(`Generate error: ${err.message || err}`);
+    }
+  }
+
   _setStatus(message) {
     if (this._statusEl) {
       this._statusEl.textContent = message;
@@ -117,4 +163,6 @@ class ClaudeAgentPanel extends HTMLElement {
   }
 }
 
-customElements.define("claude-agent-panel", ClaudeAgentPanel);
+if (!customElements.get("claude-agent-panel")) {
+  customElements.define("claude-agent-panel", ClaudeAgentPanel);
+}

@@ -23,6 +23,19 @@ DEFAULT_MODEL = "claude-3-7-sonnet-20250219"
 DEFAULT_BASE_URL = "https://api.anthropic.com"
 ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 1024
+TOOL_NAME = "update_automations"
+UPDATE_AUTOMATIONS_TOOL = {
+    "name": TOOL_NAME,
+    "description": "Return the full updated automations.yaml content.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "updated_yaml": {"type": "string"},
+            "summary": {"type": "string"},
+        },
+        "required": ["updated_yaml"],
+    },
+}
 
 
 class HAYamlLoader(yaml.SafeLoader):
@@ -128,6 +141,22 @@ def extract_fenced_yaml(content: str) -> str | None:
     return match.group(1).strip("\n")
 
 
+def extract_tool_input(data: dict[str, Any], tool_name: str) -> dict[str, Any] | None:
+    """Extract the first tool input payload for a named tool."""
+    content = data.get("content", [])
+    if not isinstance(content, list):
+        return None
+    for block in content:
+        if (
+            isinstance(block, dict)
+            and block.get("type") == "tool_use"
+            and block.get("name") == tool_name
+        ):
+            input_data = block.get("input")
+            return input_data if isinstance(input_data, dict) else None
+    return None
+
+
 def build_user_prompt(current_yaml: str, task: str, *, fence_yaml: bool) -> str:
     """Build the user prompt with optional fenced YAML context."""
     if fence_yaml:
@@ -146,6 +175,8 @@ def call_anthropic(
     user_prompt: str,
     max_tokens: int | None,
     timeout: int,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Call the Anthropic Messages API and return the decoded JSON response."""
     url = f"{base_url.rstrip('/')}/v1/messages"
@@ -157,6 +188,10 @@ def call_anthropic(
         payload["system"] = system_prompt
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
+    if tools:
+        payload["tools"] = tools
+    if tool_choice:
+        payload["tool_choice"] = tool_choice
     headers = {
         "x-api-key": api_key,
         "anthropic-version": ANTHROPIC_VERSION,
@@ -220,7 +255,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--system-prompt",
-        default="Return only the full updated YAML. Preserve structure.",
+        default=(
+            "Use the update_automations tool to return the full updated YAML. "
+            "Preserve structure and do not include Markdown fences."
+        ),
         help="System prompt for the model.",
     )
     parser.add_argument(
@@ -241,6 +279,11 @@ def parse_args() -> argparse.Namespace:
         help="Do not wrap current YAML in a fenced code block.",
     )
     parser.add_argument(
+        "--no-tool",
+        action="store_true",
+        help="Disable tool-calling and validate raw text response.",
+    )
+    parser.add_argument(
         "--out-dir",
         type=Path,
         default=None,
@@ -253,6 +296,7 @@ def main() -> int:
     """Run the smoke tests and print validation results."""
     load_env_file()
     args = parse_args()
+    use_tool = not args.no_tool
 
     prompt = args.prompt
     if not prompt and args.prompt_file:
@@ -297,6 +341,8 @@ def main() -> int:
                 user_prompt=user_prompt,
                 max_tokens=args.max_tokens,
                 timeout=args.timeout,
+                tools=[UPDATE_AUTOMATIONS_TOOL] if use_tool else None,
+                tool_choice={"type": "tool", "name": TOOL_NAME} if use_tool else None,
             )
         except requests.HTTPError as err:
             response = err.response
@@ -308,14 +354,33 @@ def main() -> int:
             return 1
 
         response_text = extract_text(data)
-        has_fence = "```" in response_text
+        tool_input = extract_tool_input(data, TOOL_NAME) if use_tool else None
+        updated_yaml = None
+        summary = ""
+        if use_tool:
+            if not tool_input or "updated_yaml" not in tool_input:
+                print("  Error: missing tool output updated_yaml.")
+                return 1
+            updated_yaml = tool_input["updated_yaml"]
+            if not isinstance(updated_yaml, str):
+                print("  Error: tool updated_yaml is not a string.")
+                return 1
+            summary = (
+                tool_input.get("summary", "") if isinstance(tool_input, dict) else ""
+            )
+            content_to_validate = updated_yaml
+        else:
+            content_to_validate = response_text
 
-        raw_ok, raw_err = validate_yaml_content(response_text)
-        fenced_yaml = extract_fenced_yaml(response_text) if not raw_ok else None
+        has_fence = "```" in content_to_validate
+        raw_ok, raw_err = validate_yaml_content(content_to_validate)
+        fenced_yaml = None
         fenced_ok = False
         fenced_err = None
-        if fenced_yaml:
-            fenced_ok, fenced_err = validate_yaml_content(fenced_yaml)
+        if not use_tool and not raw_ok:
+            fenced_yaml = extract_fenced_yaml(response_text)
+            if fenced_yaml:
+                fenced_ok, fenced_err = validate_yaml_content(fenced_yaml)
 
         usage = data.get("usage", {})
         if isinstance(usage, dict) and usage:
@@ -324,9 +389,11 @@ def main() -> int:
             usage_summary = "n/a"
 
         print(
-            f"  Response chars={len(response_text)} fence={has_fence} "
-            f"yaml_ok={raw_ok} usage={usage_summary}"
+            f"  Response chars={len(response_text)} tool={use_tool} "
+            f"fence={has_fence} yaml_ok={raw_ok} usage={usage_summary}"
         )
+        if use_tool and summary:
+            print(f"  Tool summary: {summary}")
         if raw_err:
             print(f"  YAML error: {raw_err}")
         if fenced_yaml:
@@ -339,7 +406,11 @@ def main() -> int:
             (out_dir / f"response_{suffix}.txt").write_text(
                 response_text, encoding="utf-8"
             )
-            if fenced_yaml:
+            if updated_yaml is not None:
+                (out_dir / f"response_{suffix}.yaml").write_text(
+                    updated_yaml, encoding="utf-8"
+                )
+            elif fenced_yaml:
                 (out_dir / f"response_{suffix}.yaml").write_text(
                     fenced_yaml, encoding="utf-8"
                 )

@@ -12,6 +12,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     DATA_PANEL_REGISTERED,
+    DEFAULT_MODEL,
     DOMAIN,
     PANEL_FILENAME,
     PANEL_ICON,
@@ -39,6 +40,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await _register_panel(hass)
 
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate config entry to the latest version."""
+    if entry.version == 1:
+        data = {**entry.data}
+        if data.get("model") in (None, "", "claude-3-5-sonnet"):
+            data["model"] = DEFAULT_MODEL
+        hass.config_entries.async_update_entry(entry, data=data, version=2)
     return True
 
 
