@@ -45,11 +45,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate config entry to the latest version."""
-    if entry.version == 1:
-        data = {**entry.data}
+    data = {**entry.data}
+    version = entry.version
+    updated = False
+
+    if version == 1:
         if data.get("model") in (None, "", "claude-3-5-sonnet"):
             data["model"] = DEFAULT_MODEL
-        hass.config_entries.async_update_entry(entry, data=data, version=2)
+            updated = True
+        version = 2
+
+    if version == 2:
+        if "cli_path" not in data:
+            data["cli_path"] = ""
+            updated = True
+        version = 3
+
+    if updated or version != entry.version:
+        hass.config_entries.async_update_entry(entry, data=data, version=version)
     return True
 
 

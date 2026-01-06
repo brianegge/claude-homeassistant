@@ -4,7 +4,7 @@
   "codeowners": ["@philippb"],
   "config_flow": true,
   "documentation": "https://github.com/philippb/claude-homeassistant",
-  "requirements": [],
+  "requirements": ["claude-agent-sdk==0.1.76"],
   "version": "0.1.0",
   "iot_class": "cloud_polling",
   "dependencies": ["panel_custom"]

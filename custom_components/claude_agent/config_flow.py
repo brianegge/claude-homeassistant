@@ -14,7 +14,7 @@ class ClaudeAgentConfigFlow(  # type: ignore[call-arg]
 ):
     """Handle a config flow for Claude Agent."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -26,6 +26,7 @@ class ClaudeAgentConfigFlow(  # type: ignore[call-arg]
                 vol.Required("api_key"): str,
                 vol.Optional("model", default=DEFAULT_MODEL): str,
                 vol.Optional("base_url", default="https://api.anthropic.com"): str,
+                vol.Optional("cli_path", default=""): str,
             }
         )
 
