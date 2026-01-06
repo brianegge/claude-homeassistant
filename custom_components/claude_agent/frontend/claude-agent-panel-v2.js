@@ -31,6 +31,16 @@ class ClaudeAgentPanel extends HTMLElement {
           margin-top: 8px;
           color: var(--secondary-text-color);
         }
+        .capability {
+          margin-top: 8px;
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+        .warnings {
+          margin-top: 8px;
+          font-size: 12px;
+          color: var(--error-color);
+        }
         .prompt {
           margin-top: 12px;
         }
@@ -63,6 +73,8 @@ class ClaudeAgentPanel extends HTMLElement {
             <mwc-button raised id="generate">Generate</mwc-button>
             <span class="path" id="path"></span>
           </div>
+          <div class="capability" id="capability"></div>
+          <div class="warnings" id="warnings"></div>
           <div class="prompt">
             <label for="prompt">Prompt</label>
             <textarea
@@ -77,6 +89,8 @@ class ClaudeAgentPanel extends HTMLElement {
     `;
 
     this._statusEl = this.querySelector("#status");
+    this._capabilityEl = this.querySelector("#capability");
+    this._warningsEl = this.querySelector("#warnings");
     this._pathEl = this.querySelector("#path");
     this._contentEl = this.querySelector("#content");
     this._promptEl = this.querySelector("#prompt");
@@ -98,8 +112,29 @@ class ClaudeAgentPanel extends HTMLElement {
         type: "claude_agent/get_info",
       });
       this._pathEl.textContent = info.automations_path || "";
+      await this._loadStatus();
     } catch (err) {
       this._setStatus(`Info error: ${err.message || err}`);
+    }
+  }
+
+  async _loadStatus() {
+    try {
+      const status = await this._hass.callApi("GET", "claude_agent/status");
+      const cli = status.cli || {};
+      const registries = status.registries || {};
+      const cliText = cli.available
+        ? `CLI: OK${cli.path ? ` (${cli.path})` : ""}`
+        : `CLI: missing${cli.error ? ` (${cli.error})` : ""}`;
+      const regText = `Registry: ${registries.source || "n/a"} ` +
+        `(entities=${registries.entities ?? 0}, devices=${registries.devices ?? 0}, areas=${registries.areas ?? 0})`;
+      this._capabilityEl.textContent = `${cliText} | ${regText}`;
+      if (!cli.available) {
+        this._warningsEl.textContent =
+          "Claude Code CLI not found. Set cli_path in the integration settings.";
+      }
+    } catch (err) {
+      this._warningsEl.textContent = `Status check failed: ${err.message || err}`;
     }
   }
 
@@ -153,9 +188,11 @@ class ClaudeAgentPanel extends HTMLElement {
       const warnings = result.warnings || [];
       const summary = result.summary ? ` ${result.summary}` : "";
       if (warnings.length) {
-        this._setStatus(`Generated.${summary} Warnings: ${warnings.join("; ")}`);
+        this._setStatus(`Generated.${summary}`);
+        this._warningsEl.textContent = warnings.join("; ");
       } else {
         this._setStatus(`Generated.${summary}`);
+        this._warningsEl.textContent = "";
       }
     } catch (err) {
       this._setStatus(`Generate error: ${err.message || err}`);
