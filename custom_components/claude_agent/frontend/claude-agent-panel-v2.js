@@ -1,8 +1,11 @@
+import { CloudClientAdapter } from "./cloud-client.js";
+
 class ClaudeAgentPanel extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._initialized) {
       this._initialized = true;
+      this._client = new CloudClientAdapter(hass);
       this._render();
       this._loadInfo();
     }
@@ -142,15 +145,18 @@ class ClaudeAgentPanel extends HTMLElement {
 
     this._setStatus("Generating updates...");
     try {
-      const result = await this._hass.connection.sendMessagePromise({
-        type: "claude_agent/chat",
-        prompt,
-      });
+      const result = await this._client.generate(prompt);
       this._contentEl.value = result.updated_yaml || "";
       if (result.path) {
         this._pathEl.textContent = result.path;
       }
-      this._setStatus("Generated.");
+      const warnings = result.warnings || [];
+      const summary = result.summary ? ` ${result.summary}` : "";
+      if (warnings.length) {
+        this._setStatus(`Generated.${summary} Warnings: ${warnings.join("; ")}`);
+      } else {
+        this._setStatus(`Generated.${summary}`);
+      }
     } catch (err) {
       this._setStatus(`Generate error: ${err.message || err}`);
     }

@@ -20,6 +20,7 @@ from .const import (
     PANEL_TITLE,
     PANEL_URL_PATH,
 )
+from .http_api import async_register_http
 from .websocket_api import async_register as async_register_websocket
 
 
@@ -29,6 +30,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN].setdefault(DATA_PANEL_REGISTERED, False)
 
     async_register_websocket(hass)
+    async_register_http(hass)
 
     return True
 
@@ -77,12 +79,12 @@ async def _register_panel(hass: HomeAssistant) -> None:
     if hass.data.get(DOMAIN, {}).get(DATA_PANEL_REGISTERED):
         return
 
-    panel_path = Path(__file__).parent / "frontend" / PANEL_FILENAME
+    frontend_dir = Path(__file__).parent / "frontend"
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
-                url_path=PANEL_STATIC_PATH,
-                path=str(panel_path),
+                url_path=f"/{DOMAIN}",
+                path=str(frontend_dir),
                 cache_headers=False,
             )
         ]
