@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import area_registry, device_registry, entity_registry
 
 from .yaml_validation import HAYamlLoader
 
@@ -41,11 +42,38 @@ class EntityReferenceValidator:
         self._entities: dict[str, Any] | None = None
         self._devices: dict[str, Any] | None = None
         self._areas: dict[str, Any] | None = None
+        self._registry_source: str | None = None
+
+    def _load_registries_from_api(self, result: ValidationResult) -> bool:
+        """Load registries using HA APIs if available."""
+        try:
+            entities = entity_registry.async_get(self._hass).entities
+            devices = device_registry.async_get(self._hass).devices
+            areas = area_registry.async_get(self._hass).areas
+        except Exception as err:
+            result.warnings.append(f"{self._label}: Registry API unavailable: {err}")
+            self._registry_source = "storage"
+            return False
+
+        self._entities = {
+            entry.entity_id: {
+                "entity_id": entry.entity_id,
+                "id": entry.id,
+                "disabled_by": entry.disabled_by,
+            }
+            for entry in entities.values()
+        }
+        self._devices = {entry.id: {"id": entry.id} for entry in devices.values()}
+        self._areas = {entry.id: {"id": entry.id} for entry in areas.values()}
+        self._registry_source = "api"
+        return True
 
     def load_entity_registry(self, result: ValidationResult) -> dict[str, Any]:
         """Load the entity registry from HA storage."""
         if self._entities is not None:
             return self._entities
+        if self._registry_source is None and self._load_registries_from_api(result):
+            return self._entities or {}
         registry_file = self._storage_dir / "core.entity_registry"
         if not registry_file.exists():
             result.errors.append(f"Entity registry not found: {registry_file}")
@@ -66,6 +94,8 @@ class EntityReferenceValidator:
         """Load the device registry from HA storage."""
         if self._devices is not None:
             return self._devices
+        if self._registry_source is None and self._load_registries_from_api(result):
+            return self._devices or {}
         registry_file = self._storage_dir / "core.device_registry"
         if not registry_file.exists():
             result.errors.append(f"Device registry not found: {registry_file}")
@@ -86,6 +116,8 @@ class EntityReferenceValidator:
         """Load the area registry from HA storage."""
         if self._areas is not None:
             return self._areas
+        if self._registry_source is None and self._load_registries_from_api(result):
+            return self._areas or {}
         registry_file = self._storage_dir / "core.area_registry"
         if not registry_file.exists():
             result.warnings.append(f"Area registry not found: {registry_file}")
