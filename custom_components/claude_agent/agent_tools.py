@@ -19,6 +19,7 @@ class ToolState:
     updated_yaml: str | None = None
     summary: str | None = None
     validation: ValidationResult | None = None
+    current_yaml: str | None = None
 
 
 def _automations_path(hass: HomeAssistant) -> Path:
@@ -38,11 +39,14 @@ def build_tools(hass: HomeAssistant, state: ToolState):
         },
     )
     async def read_automations(_: dict[str, Any]) -> dict[str, Any]:
-        path = _automations_path(hass)
-        if not path.exists():
-            content = ""
+        if state.current_yaml is not None:
+            content = state.current_yaml
         else:
-            content = await hass.async_add_executor_job(path.read_text, "utf-8")
+            path = _automations_path(hass)
+            if not path.exists():
+                content = ""
+            else:
+                content = await hass.async_add_executor_job(path.read_text, "utf-8")
         return {"content": [{"type": "text", "text": content}]}
 
     @tool(
@@ -55,6 +59,7 @@ def build_tools(hass: HomeAssistant, state: ToolState):
         summary = args.get("summary")
         if isinstance(updated_yaml, str):
             state.updated_yaml = updated_yaml
+            state.current_yaml = updated_yaml
         if isinstance(summary, str):
             state.summary = summary
         return {"content": [{"type": "text", "text": "Updated YAML received."}]}

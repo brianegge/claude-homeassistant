@@ -65,6 +65,7 @@ class ClaudeAgentChatView(HomeAssistantView):
             return web.json_response({"error": "Missing prompt."}, status=400)
 
         target = data.get("target", "automations.yaml")
+        session_id = data.get("session_id")
         if target != "automations.yaml":
             return web.json_response(
                 {"error": "Only automations.yaml is supported for now."}, status=400
@@ -77,7 +78,12 @@ class ClaudeAgentChatView(HomeAssistantView):
             )
 
         try:
-            result = await run_agent(hass, entry_data=entry.data, prompt=prompt)
+            result = await run_agent(
+                hass,
+                entry_data=entry.data,
+                prompt=prompt,
+                session_id=session_id,
+            )
         except HomeAssistantError as err:
             return web.json_response({"error": str(err)}, status=400)
         except Exception as err:
@@ -88,6 +94,7 @@ class ClaudeAgentChatView(HomeAssistantView):
                 "updated_yaml": result.updated_yaml,
                 "summary": result.summary,
                 "warnings": result.validation.warnings,
+                "session_id": result.session_id,
             }
         )
 

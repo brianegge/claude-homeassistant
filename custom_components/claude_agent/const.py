@@ -11,3 +11,4 @@ PANEL_FILENAME = "claude-agent-panel-v2.js"
 PANEL_STATIC_PATH = f"/{DOMAIN}/{PANEL_FILENAME}"
 
 DATA_PANEL_REGISTERED = "panel_registered"
+SESSION_CONTEXT_KEY = "session_context"

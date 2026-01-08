@@ -111,6 +111,7 @@ async def websocket_write_automations(
         vol.Required("type"): "claude_agent/chat",
         vol.Required("prompt"): str,
         vol.Optional("target", default="automations.yaml"): str,
+        vol.Optional("session_id"): str,
     }
 )
 @websocket_api.async_response
@@ -141,6 +142,7 @@ async def websocket_chat(
             hass,
             entry_data=entry.data,
             prompt=msg["prompt"],
+            session_id=msg.get("session_id"),
         )
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "chat_failed", str(err))
@@ -155,5 +157,6 @@ async def websocket_chat(
             "updated_yaml": result.updated_yaml,
             "summary": result.summary,
             "path": str(path),
+            "session_id": result.session_id,
         },
     )
