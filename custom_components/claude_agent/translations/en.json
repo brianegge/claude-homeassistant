@@ -7,7 +7,8 @@
         "data": {
           "api_key": "API key",
           "model": "Model",
-          "base_url": "Base URL"
+          "base_url": "Base URL",
+          "cli_path": "CLI path (optional)"
         }
       }
     }

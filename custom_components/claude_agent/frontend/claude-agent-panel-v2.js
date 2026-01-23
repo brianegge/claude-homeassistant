@@ -176,7 +176,7 @@ class ClaudeAgentPanel extends HTMLElement {
             <div class="pane">
               <div class="row">
                 <div class="section-title">Chat</div>
-                <mwc-button outlined id="new-chat">New chat</mwc-button>
+                <mwc-button outlined id="new-automation">New automation</mwc-button>
               </div>
               <div class="chat-log" id="chat-log" aria-live="polite"></div>
               <div class="chat-composer">
@@ -230,8 +230,8 @@ class ClaudeAgentPanel extends HTMLElement {
     this.querySelector("#send").addEventListener("click", () => {
       this._sendPrompt();
     });
-    this.querySelector("#new-chat").addEventListener("click", () => {
-      this._startNewChat();
+    this.querySelector("#new-automation").addEventListener("click", () => {
+      this._startNewAutomation();
     });
     this._promptEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
@@ -335,7 +335,9 @@ class ClaudeAgentPanel extends HTMLElement {
       const summary = result.summary ? ` ${result.summary}` : "";
       const hasYaml = Boolean(result.updated_yaml);
       if (warnings.length) {
-        const status = hasYaml ? `Generated.${summary}` : `Response received.${summary}`;
+        const status = hasYaml
+          ? `Generated (not saved).${summary}`
+          : `Response received.${summary}`;
         const warningText = `\n${warnings.join("\n")}`;
         this._setStatus(status);
         this._warningsEl.textContent = warnings.join("; ");
@@ -345,7 +347,9 @@ class ClaudeAgentPanel extends HTMLElement {
           this._appendChatMessage("assistant", `${result.summary || status}${warningText}`);
         }
       } else {
-        const status = hasYaml ? `Generated.${summary}` : `Response received.${summary}`;
+        const status = hasYaml
+          ? `Generated (not saved).${summary}`
+          : `Response received.${summary}`;
         this._setStatus(status);
         this._warningsEl.textContent = "";
         if (hasYaml) {
@@ -384,15 +388,22 @@ class ClaudeAgentPanel extends HTMLElement {
     this._chatLogEl.scrollTop = this._chatLogEl.scrollHeight;
   }
 
-  _startNewChat() {
+  _startNewAutomation() {
     if (this._chatLogEl) {
       this._chatLogEl.textContent = "";
     }
     if (this._client) {
       this._client.resetSession();
     }
+    if (this._warningsEl) {
+      this._warningsEl.textContent = "";
+    }
+    if (this._promptEl) {
+      this._promptEl.value = "";
+    }
     this._setTyping(false);
-    this._setStatus("Ready.");
+    this._setStatus("New automation context started.");
+    this._loadAutomations();
   }
 
   _setTyping(active) {

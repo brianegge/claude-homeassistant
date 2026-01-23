@@ -28,7 +28,7 @@ RED = \033[0;31m
 NC = \033[0m # No Color
 
 .PHONY: help pull push validate backup clean setup test status entities reload format-yaml check-env
-.PHONY: ha-local-setup ha-local-init ha-local-run ha-local-check ha-local-logs
+.PHONY: ha-local-setup ha-local-init ha-local-run ha-local-check ha-local-logs ha-local-e2e
 
 # Default target
 help:
@@ -44,6 +44,7 @@ help:
 	@echo "  $(YELLOW)ha-local-run$(NC)   - Run local HA Core (foreground)"
 	@echo "  $(YELLOW)ha-local-check$(NC) - Validate local config with HA Core"
 	@echo "  $(YELLOW)ha-local-logs$(NC)  - Tail local HA Core log file"
+	@echo "  $(YELLOW)ha-local-e2e$(NC)   - End-to-end check against local HA"
 	@echo "  $(YELLOW)test$(NC)     - Run validation tests (alias for validate)"
 	@echo "  $(YELLOW)status$(NC)   - Show configuration status and entity counts"
 	@echo "  $(YELLOW)entities$(NC) - Explore available entities (usage: make entities [ARGS='options'])"
@@ -127,6 +128,10 @@ ha-local-logs:
 		exit 1; \
 	fi
 	@tail -n 200 -f $(HA_LOCAL_LOG_PATH)
+
+ha-local-e2e:
+	@echo "$(GREEN)Running local HA end-to-end validation...$(NC)"
+	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/ha_local_e2e.py
 
 # Show configuration status
 status: check-setup
