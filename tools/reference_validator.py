@@ -91,17 +91,17 @@ class ReferenceValidator:
     SPECIAL_KEYWORDS = {"all", "none"}
 
     # Built-in entities that always exist but aren't in the entity registry
+    # zone.home is a special, pre-defined, non-deletable zone
+    # See: https://www.home-assistant.io/integrations/zone/
     BUILTIN_ENTITIES = {
         "sun.sun",
         "zone.home",
-        "persistent_notification.config_entry_discovery",
     }
 
-    # Built-in domain prefixes - entities in these domains are auto-created
-    BUILTIN_DOMAINS = {
-        "zone",  # zones are created from configuration
-        "persistent_notification",
-    }
+    # No domain-wide skips - we validate all entity references
+    # persistent_notification uses notification_id with services/triggers,
+    # not entity IDs. See: https://www.home-assistant.io/integrations/persistent_notification/
+    BUILTIN_DOMAINS: set = set()
 
     def __init__(self, config_dir: str = "config"):
         """Initialize the ReferenceValidator."""
@@ -196,6 +196,9 @@ class ReferenceValidator:
         entities.update(self._extract_script_entities())
         entities.update(self._extract_scene_entities())
 
+        # Extract zone entities from configuration and storage
+        entities.update(self._extract_zone_entities())
+
         return entities
 
     def _extract_groups(self) -> Set[str]:
@@ -270,7 +273,12 @@ class ReferenceValidator:
         return entities
 
     def _extract_template_entities(self, template_config: Any) -> Set[str]:
-        """Extract entity names from template configuration."""
+        """Extract entity names from template configuration.
+
+        Per HA docs: default_entity_id controls automatic entity_id generation.
+        unique_id exists to allow changing entity_id in the UI - it's NOT the entity_id.
+        See: https://www.home-assistant.io/integrations/template/
+        """
         entities: Set[str] = set()
 
         if not isinstance(template_config, dict):
@@ -283,11 +291,12 @@ class ReferenceValidator:
                 if isinstance(type_data, list):
                     for item in type_data:
                         if isinstance(item, dict):
-                            # Try unique_id first, then name
-                            unique_id = item.get("unique_id")
+                            # Use default_entity_id if present, else derive from name
+                            # Do NOT use unique_id - it's for UI customization only
+                            default_entity_id = item.get("default_entity_id")
                             name = item.get("name", "")
-                            if unique_id:
-                                entities.add(f"{entity_type}.{unique_id}")
+                            if default_entity_id:
+                                entities.add(f"{entity_type}.{default_entity_id}")
                             elif name:
                                 # Convert name to entity_id format
                                 entity_name = name.lower().replace(" ", "_")
@@ -296,7 +305,14 @@ class ReferenceValidator:
         return entities
 
     def _extract_automation_entities(self) -> Set[str]:
-        """Extract automation entities from automations.yaml."""
+        """Extract automation entities from automations.yaml.
+
+        Per HA docs: The 'id' field is a unique identifier that allows changing
+        the name and entity_id in the UI - it is NOT the entity_id itself.
+        Entity_id is generated from the entity name (alias).
+        Registry should be source of truth; alias-slug is a fallback heuristic.
+        See: https://www.home-assistant.io/docs/automation/yaml/
+        """
         entities: Set[str] = set()
         automations_file = self.config_dir / "automations.yaml"
 
@@ -307,11 +323,9 @@ class ReferenceValidator:
                     if isinstance(data, list):
                         for automation in data:
                             if isinstance(automation, dict):
-                                # Use id or alias to create entity name
-                                auto_id = automation.get("id")
+                                # Derive entity_id from alias (friendly name)
+                                # Do NOT use 'id' field - it's for UI customization only
                                 alias = automation.get("alias", "")
-                                if auto_id:
-                                    entities.add(f"automation.{auto_id}")
                                 if alias:
                                     # Convert alias to entity_id format
                                     entity_name = alias.lower().replace(" ", "_").replace("-", "_")
@@ -359,6 +373,55 @@ class ReferenceValidator:
                                 if name:
                                     entity_name = name.lower().replace(" ", "_")
                                     entities.add(f"scene.{entity_name}")
+            except Exception:
+                pass
+
+        return entities
+
+    def _extract_zone_entities(self) -> Set[str]:
+        """Extract zone entities from configuration and storage.
+
+        Zones can be defined in:
+        1. configuration.yaml under 'zone:' key
+        2. .storage/core.zone file (UI-configured zones)
+
+        zone.home is a built-in that's always present and handled separately.
+        See: https://www.home-assistant.io/integrations/zone/
+        """
+        entities: Set[str] = set()
+
+        # Extract from configuration.yaml
+        config_file = self.config_dir / "configuration.yaml"
+        if config_file.exists():
+            try:
+                with open(config_file, "r", encoding="utf-8") as f:
+                    data = yaml.load(f, Loader=HAYamlLoader)
+                    if isinstance(data, dict) and "zone" in data:
+                        zone_data = data["zone"]
+                        if isinstance(zone_data, list):
+                            for zone in zone_data:
+                                if isinstance(zone, dict):
+                                    name = zone.get("name", "")
+                                    if name:
+                                        # Convert name to entity_id format
+                                        entity_name = name.lower().replace(" ", "_")
+                                        entities.add(f"zone.{entity_name}")
+            except Exception:
+                pass
+
+        # Extract from storage (UI-configured zones)
+        zone_storage = self.storage_dir / "core.zone"
+        if zone_storage.exists():
+            try:
+                with open(zone_storage, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    items = data.get("data", {}).get("items", [])
+                    for item in items:
+                        if isinstance(item, dict):
+                            name = item.get("name", "")
+                            if name:
+                                entity_name = name.lower().replace(" ", "_")
+                                entities.add(f"zone.{entity_name}")
             except Exception:
                 pass
 
